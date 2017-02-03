@@ -72,8 +72,24 @@ def dump_lrc(data, filename, dump_trim_info=True):
 
 def dump_trim_data(trim_data, filename):
     fout = open(filename, 'w')
-    for d in trim_data:
+    for i, d in enumerate(trim_data):
         fout.write(str(d[0]) + ' ' + str(d[1]) + '\n')
+
+def dump_trim_script(trim_data, filename, audioin, audioout, cmd='ffmpeg'):
+    fout = open(filename, 'w')
+    fout.write('%s -i "%s" -filter_complex "'%(cmd, audioin))
+    fout.write('[0]atrim=start=0:end=%.2f,asetpts=PTS-STARTPTS[a%d]; '\
+            %(trim_data[0][0], 0))
+    for i in range(len(trim_data)-1):
+        fout.write('[0]atrim=start=%.2f:end=%.2f,asetpts=PTS-STARTPTS[a%d]; '\
+            %(trim_data[i][1], trim_data[i+1][0], i+1))
+    fout.write('[0]atrim=start=%.2f,asetpts=PTS-STARTPTS[a%d]; '\
+            %(trim_data[-1][1], len(trim_data)))
+    fout.write('%sconcat=n=%d:v=0:a=1[aout]" '\
+        %(''.join([('[a%d]'%i) for i in range(len(trim_data)+1)]), len(trim_data)+1))
+    fout.write(' -map [aout] -codec:a libmp3lame -qscale:a 5 -strict -2 "%s"\n'\
+        %audioout)
+    fout.close()
 
 def remove_gaps(data, interval, target_interval=3.0):
     did = 0
@@ -95,13 +111,37 @@ def remove_gaps(data, interval, target_interval=3.0):
             d[0] -= delta
             d[1] -= delta
     return data, trim_data[::-1]
-    
-if __name__ == '__main__':
+
+def test():
     data = parse_ass('test.ass')
-#    f=open('1.csv','w')
-#    for i in data:
-#        f.write(str(i[0])+'\n')
-#    data = parse_srt('test.srt')
+    # data = parse_srt('test.srt')
     data, trim_data = remove_gaps(data, 5)
     dump_lrc(data, 'output.lrc')
-    dump_trim_data(trim_data, 'output.trim.txt')
+
+if __name__ == '__main__':
+    assert len(sys.argv) == 4, "Args: mp3_dir subtitle_dir(or - if same) output_dir"
+    mp3_dir = sys.argv[1]
+    sub_dir = mp3_dir if sys.argv[2] == '-' else sys.argv[2]
+    out_dir = sys.argv[3]
+    mp3_files = [i for i in os.listdir(mp3_dir) if i.endswith('.mp3')]
+    mp3_files.sort()
+    sub_type = 'ass'
+    sub_files = [i for i in os.listdir(sub_dir) if i.endswith('.ass')]
+    if len(sub_files) != len(mp3_files):
+        sub_type = 'srt'
+        sub_files = [i for i in os.listdir(sub_dir) if i.endswith('.srt')]
+    assert len(sub_files) == len(mp3_files), "File number mismatch"
+    sub_files.sort()
+    if not os.path.exists(out_dir):
+        os.makedirs(out_dir)
+    for i in range(len(mp3_files)):
+        if sub_type == 'ass':
+            data = parse_ass(os.path.join(sub_dir, sub_files[i]))
+        elif sub_type == 'srt':
+            data = parse_srt(os.path.join(sub_dir, sub_files[i]))
+        data, trim_data = remove_gaps(data, 5)
+        lrc_name = mp3_files[i][:-4] + '.lrc'
+        dump_lrc(data, os.path.join(out_dir, lrc_name))
+        dump_trim_script(trim_data, 'tmp.bat', \
+            os.path.join(mp3_dir, mp3_files[i]), os.path.join(out_dir, mp3_files[i]))
+        os.system('tmp.bat')
