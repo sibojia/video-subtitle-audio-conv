@@ -29,12 +29,17 @@ def parse_ass(fname):
                     fcol[f] = i
             assert(len(fcol) == 3)
         elif started:
-            s = re.sub('(\{.*?\})', '', lines[lid])
-            tok = [i.strip() for i in s.split(',')]
-            text = tok[fcol['Text']]
-            data.append([strptime(tok[fcol['Start']]), strptime(tok[fcol['End']]), text])
+            s = re.sub('(\{.*?  \})', '', lines[lid])
+            if len(s):
+                tok = [i.strip() for i in s.split(',')]
+                if fcol['Text'] < len(tok):
+                    text = tok[fcol['Text']]
+                    data.append([strptime(tok[fcol['Start']]), strptime(tok[fcol['End']]), text])
+                else:
+                    print 'Skip abnormal line: ', lines
         lid += 1
     data.sort()
+    print 'Parse ass done. (%s %d)' % (fname, len(data))
     return data
 
 def parse_srt(fname):
